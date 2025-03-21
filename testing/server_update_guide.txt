@@ -1,0 +1,122 @@
+# Model Selection Guide for Fraud Detection API
+
+We've created three different KNN models using different sampling techniques:
+
+1. **KNN with Random Undersampling**: Good balance between false positives and false negatives
+   - Files: `fraud_model_undersampling.pkl` and `fraud_scaler_undersampling.pkl`
+   - Accuracy: 0.4625 (lower because it's optimized for finding fraud)
+
+2. **KNN with Random Oversampling**: Very high accuracy, but may miss some fraud cases
+   - Files: `fraud_model_oversampling.pkl` and `fraud_scaler_oversampling.pkl`
+   - Accuracy: 0.9999
+
+3. **KNN with SMOTE**: High accuracy with more sophisticated synthetic samples
+   - Files: `fraud_model_smote.pkl` and `fraud_scaler_smote.pkl`
+   - Accuracy: 0.9998
+
+### How to Update server.py to Use Different Models
+
+In the `server.py` file, the models are loaded in the `startup_event` function. 
+Here's how you can modify it to load a specific model or implement a model selection feature:
+
+1. **Basic usage - just replace the current model:**
+
+```python
+@app.on_event("startup")
+async def startup_event():
+    init_db()
+    # Load ML model and scaler
+    global model, scaler
+    try:
+        # Choose one of these combinations:
+        
+        # Option 1: Random Undersampling (better at detecting fraud)
+        model = joblib.load('fraud_model_undersampling.pkl')
+        scaler = joblib.load('fraud_scaler_undersampling.pkl')
+        
+        # Option 2: Random Oversampling (high accuracy)
+        # model = joblib.load('fraud_model_oversampling.pkl')
+        # scaler = joblib.load('fraud_scaler_oversampling.pkl')
+        
+        # Option 3: SMOTE (balanced approach)
+        # model = joblib.load('fraud_model_smote.pkl')
+        # scaler = joblib.load('fraud_scaler_smote.pkl')
+    except:
+        print("Warning: ML model or scaler not found. Using mock implementation.")
+```
+
+2. **Advanced usage - Model selection at runtime:**
+
+Add the following code to make the model selectable through a configuration setting or environment variable:
+
+```python
+import os
+
+@app.on_event("startup")
+async def startup_event():
+    init_db()
+    # Load ML model and scaler
+    global model, scaler
+    
+    # Get model type from environment variable or use SMOTE as default
+    model_type = os.getenv("FRAUD_MODEL_TYPE", "smote").lower()
+    
+    try:
+        if model_type == "undersampling":
+            model = joblib.load('fraud_model_undersampling.pkl')
+            scaler = joblib.load('fraud_scaler_undersampling.pkl')
+            print("Loaded KNN model with Random Undersampling")
+        elif model_type == "oversampling":
+            model = joblib.load('fraud_model_oversampling.pkl')
+            scaler = joblib.load('fraud_scaler_oversampling.pkl')
+            print("Loaded KNN model with Random Oversampling")
+        else:  # default to SMOTE
+            model = joblib.load('fraud_model_smote.pkl')
+            scaler = joblib.load('fraud_scaler_smote.pkl')
+            print("Loaded KNN model with SMOTE")
+    except Exception as e:
+        print(f"Warning: ML model or scaler not found. Using mock implementation. Error: {str(e)}")
+```
+
+3. **API endpoint for switching models at runtime:**
+
+You can also add an API endpoint to switch between models without restarting the server:
+
+```python
+# Add to your existing imports
+from pydantic import BaseModel
+
+# Add this class with the other Pydantic models
+class ModelConfig(BaseModel):
+    model_type: str  # "undersampling", "oversampling", or "smote"
+
+# Add this API endpoint
+@app.post("/api/config/model")
+async def switch_model(config: ModelConfig):
+    global model, scaler
+    
+    try:
+        if config.model_type == "undersampling":
+            model = joblib.load('fraud_model_undersampling.pkl')
+            scaler = joblib.load('fraud_scaler_undersampling.pkl')
+            return {"status": "success", "message": "Switched to KNN model with Random Undersampling"}
+        elif config.model_type == "oversampling":
+            model = joblib.load('fraud_model_oversampling.pkl')
+            scaler = joblib.load('fraud_scaler_oversampling.pkl')
+            return {"status": "success", "message": "Switched to KNN model with Random Oversampling"}
+        elif config.model_type == "smote":
+            model = joblib.load('fraud_model_smote.pkl')
+            scaler = joblib.load('fraud_scaler_smote.pkl')
+            return {"status": "success", "message": "Switched to KNN model with SMOTE"}
+        else:
+            raise ValueError(f"Unknown model type: {config.model_type}")
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to switch model: {str(e)}"}
+```
+
+### Model Recommendation
+
+- Use the **Random Undersampling** model when you need to be more aggressive in detecting fraud, even if it means more false positives
+- Use the **Random Oversampling** or **SMOTE** models when you need high accuracy and fewer false alarms
+
+Each model/scaler pair needs to stay together. Always load the matching scaler for the model you're using. 
