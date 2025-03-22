@@ -5,11 +5,15 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
 
-# Define the sampling methods (limited to the 3 requested methods)
+# Define the sampling methods (based on the server.py file and the available CSVs)
 sampling_methods = [
+    "No_Sampling",
     "Random_Undersampling", 
     "Random_Oversampling", 
-    "SMOTE"
+    "SMOTE",
+    "ADASYN",
+    "SMOTEENN",
+    "SMOTETomek"
 ]
 
 # Define models to plot (focusing on KNN and Gradient Boosting as requested)
@@ -50,47 +54,29 @@ def calculate_metrics(cm):
         "f1": f1
     }
 
-# Function to plot individual confusion matrix and save as separate file
-def plot_individual_confusion_matrix(model, sampling_method):
-    file_path = f"confusion_matrices/{model}_{sampling_method}_cm.csv"
-    cm = read_confusion_matrix(file_path)
-    
+# Function to plot confusion matrix
+def plot_confusion_matrix(cm, title, ax):
     if cm is None:
-        print(f"Unable to plot {model} with {sampling_method} (missing data)")
-        return None
+        ax.text(0.5, 0.5, "Data not available", horizontalalignment='center', verticalalignment='center')
+        ax.set_title(title)
+        return {}
     
     # Calculate metrics
     metrics = calculate_metrics(cm)
     
-    # Create new figure for individual matrix
-    plt.figure(figsize=(8, 6))
-    ax = plt.gca()
-    
     # Create heatmap
-    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", cbar=True, ax=ax)
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", cbar=False, ax=ax)
     ax.set_xlabel('Predicted')
     ax.set_ylabel('Actual')
     
     # Add metrics to title
-    metrics_text = f"Accuracy: {metrics['accuracy']:.3f}\nPrecision: {metrics['precision']:.3f}\nRecall: {metrics['recall']:.3f}\nF1: {metrics['f1']:.3f}\nSpecificity: {metrics['specificity']:.3f}"
-    title = f"{model.replace('_', ' ')} with {sampling_method.replace('_', ' ')}"
-    plt.title(f"{title}")
-    
-    # Add metrics text in the bottom right
-    plt.figtext(0.6, 0.01, metrics_text, ha="left", fontsize=10, 
-                bbox={"facecolor":"white", "alpha":0.5, "pad":5})
+    metrics_text = f"Acc: {metrics['accuracy']:.3f}, Prec: {metrics['precision']:.3f}, Rec: {metrics['recall']:.3f}, F1: {metrics['f1']:.3f}"
+    ax.set_title(f"{title}\n{metrics_text}")
     
     # Set x and y tick labels
     ax.set_xticklabels(['Negative', 'Positive'])
     ax.set_yticklabels(['Negative', 'Positive'])
     
-    # Save figure
-    output_file = f"{output_dir}/{model}_{sampling_method}_confusion_matrix.png"
-    plt.tight_layout()
-    plt.savefig(output_file, dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    print(f"Saved {output_file}")
     return metrics
 
 # Create a directory for the output plots
@@ -100,18 +86,56 @@ os.makedirs(output_dir, exist_ok=True)
 # Store metrics for later comparison
 all_metrics = {}
 
-# Process each model and sampling method combination
-for model in models:
-    model_metrics = {}
-    for sampling_method in sampling_methods:
-        metrics = plot_individual_confusion_matrix(model, sampling_method)
-        if metrics:
-            model_metrics[sampling_method] = metrics
-    all_metrics[model] = model_metrics
+# Plot KNN confusion matrices
+fig, axes = plt.subplots(1, len(sampling_methods), figsize=(24, 4))
+fig.suptitle('KNN Confusion Matrices with Different Sampling Methods', fontsize=16)
+
+knn_metrics = {}
+for i, sampling_method in enumerate(sampling_methods):
+    file_path = f"confusion_matrices/KNN_{sampling_method}_cm.csv"
+    cm = read_confusion_matrix(file_path)
+    metrics = plot_confusion_matrix(cm, f"KNN with {sampling_method.replace('_', ' ')}", axes[i])
+    knn_metrics[sampling_method] = metrics
+
+plt.tight_layout(rect=[0, 0, 1, 0.96])
+plt.savefig(f"{output_dir}/knn_confusion_matrices.png", dpi=300, bbox_inches='tight')
+all_metrics["KNN"] = knn_metrics
+
+# Plot Gradient Boosting confusion matrices
+fig, axes = plt.subplots(1, len(sampling_methods), figsize=(24, 4))
+fig.suptitle('Gradient Boosting Confusion Matrices with Different Sampling Methods', fontsize=16)
+
+gb_metrics = {}
+for i, sampling_method in enumerate(sampling_methods):
+    file_path = f"confusion_matrices/Gradient_Boosting_{sampling_method}_cm.csv"
+    cm = read_confusion_matrix(file_path)
+    metrics = plot_confusion_matrix(cm, f"Gradient Boosting with {sampling_method.replace('_', ' ')}", axes[i])
+    gb_metrics[sampling_method] = metrics
+
+plt.tight_layout(rect=[0, 0, 1, 0.96])
+plt.savefig(f"{output_dir}/gradient_boosting_confusion_matrices.png", dpi=300, bbox_inches='tight')
+all_metrics["Gradient_Boosting"] = gb_metrics
+
+# Plot combined figure with just the top sampling methods for both models
+# Let's choose 3 sampling methods: Random_Undersampling, SMOTE, and SMOTETomek
+top_sampling_methods = ["Random_Undersampling", "SMOTE", "SMOTETomek"]
+fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+fig.suptitle('Comparison of KNN and Gradient Boosting with Different Sampling Methods', fontsize=16)
+
+for i, model in enumerate(models):
+    for j, sampling_method in enumerate(top_sampling_methods):
+        file_path = f"confusion_matrices/{model}_{sampling_method}_cm.csv"
+        cm = read_confusion_matrix(file_path)
+        plot_confusion_matrix(cm, f"{model.replace('_', ' ')} with {sampling_method.replace('_', ' ')}", axes[i, j])
+
+plt.tight_layout(rect=[0, 0, 1, 0.96])
+plt.savefig(f"{output_dir}/model_comparison.png", dpi=300, bbox_inches='tight')
 
 # Create performance comparison bar charts
 metrics_to_plot = ["accuracy", "precision", "recall", "f1"]
 for metric in metrics_to_plot:
+    plt.figure(figsize=(12, 6))
+    
     # Prepare data for bar chart
     model_data = []
     for model in models:
@@ -127,7 +151,7 @@ for metric in metrics_to_plot:
     x = np.arange(len(sampling_methods))
     width = 0.35
     
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, ax = plt.subplots(figsize=(14, 6))
     rects1 = ax.bar(x - width/2, model_data[0], width, label=models[0])
     rects2 = ax.bar(x + width/2, model_data[1], width, label=models[1])
     
@@ -135,7 +159,7 @@ for metric in metrics_to_plot:
     ax.set_ylabel(metric.capitalize())
     ax.set_title(f'{metric.capitalize()} Comparison by Model and Sampling Method')
     ax.set_xticks(x)
-    ax.set_xticklabels([s.replace('_', ' ') for s in sampling_methods])
+    ax.set_xticklabels([s.replace('_', ' ') for s in sampling_methods], rotation=45, ha='right')
     ax.legend()
     
     # Add value labels
@@ -146,14 +170,13 @@ for metric in metrics_to_plot:
                         xy=(rect.get_x() + rect.get_width() / 2, height),
                         xytext=(0, 3),  # 3 points vertical offset
                         textcoords="offset points",
-                        ha='center', va='bottom')
+                        ha='center', va='bottom', rotation=90)
     
     autolabel(rects1)
     autolabel(rects2)
     
     fig.tight_layout()
     plt.savefig(f"{output_dir}/{metric}_comparison.png", dpi=300, bbox_inches='tight')
-    plt.close()
 
 # Create a summary table of all metrics
 summary_data = []
@@ -175,5 +198,5 @@ for model in models:
 summary_df = pd.DataFrame(summary_data)
 summary_df.to_csv(f"{output_dir}/metrics_summary.csv", index=False)
 
-print(f"All plots saved to {output_dir} directory")
+print(f"Plots saved to {output_dir} directory")
 print(f"Summary metrics saved to {output_dir}/metrics_summary.csv") 
