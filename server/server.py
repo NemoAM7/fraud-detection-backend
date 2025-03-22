@@ -26,7 +26,7 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Allow all origins (for development)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -34,7 +34,14 @@ app.add_middleware(
 
 # Database connection
 def get_db_connection():
-    conn = sqlite3.connect('fraud_detection.db')
+    # For Vercel's serverless environment, we need to use an in-memory database
+    # or connect to a remote database service
+    if os.environ.get('VERCEL_ENV'):
+        # This is just a placeholder, you'll need to replace this with your actual
+        # database connection details for production
+        conn = sqlite3.connect(':memory:')
+    else:
+        conn = sqlite3.connect('fraud_detection.db')
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -93,19 +100,26 @@ async def startup_event():
     current_model_type = os.getenv("FRAUD_MODEL_TYPE", "smote").lower()
     
     try:
-        if current_model_type == "undersampling":
-            model = joblib.load('fraud_model_undersampling.pkl')
-            scaler = joblib.load('fraud_scaler_undersampling.pkl')
-            print("Loaded KNN model with Random Undersampling")
-        elif current_model_type == "oversampling":
-            model = joblib.load('fraud_model_oversampling.pkl')
-            scaler = joblib.load('fraud_scaler_oversampling.pkl')
-            print("Loaded KNN model with Random Oversampling")
-        else:  # default to SMOTE
-            current_model_type = "smote"
-            model = joblib.load('fraud_model_smote.pkl')
-            scaler = joblib.load('fraud_scaler_smote.pkl')
-            print("Loaded KNN model with SMOTE")
+        # For Vercel, we might need to handle this differently
+        # as large model files might need to be stored elsewhere
+        if os.environ.get('VERCEL_ENV'):
+            # Mock implementation for Vercel
+            current_model_type = "mock"
+            print("Running in Vercel environment, using mock model implementation")
+        else:
+            if current_model_type == "undersampling":
+                model = joblib.load('fraud_model_undersampling.pkl')
+                scaler = joblib.load('fraud_scaler_undersampling.pkl')
+                print("Loaded KNN model with Random Undersampling")
+            elif current_model_type == "oversampling":
+                model = joblib.load('fraud_model_oversampling.pkl')
+                scaler = joblib.load('fraud_scaler_oversampling.pkl')
+                print("Loaded KNN model with Random Oversampling")
+            else:  # default to SMOTE
+                current_model_type = "smote"
+                model = joblib.load('fraud_model_smote.pkl')
+                scaler = joblib.load('fraud_scaler_smote.pkl')
+                print("Loaded KNN model with SMOTE")
     except Exception as e:
         print(f"Warning: ML model or scaler not found. Using mock implementation. Error: {str(e)}")
         current_model_type = "mock"
